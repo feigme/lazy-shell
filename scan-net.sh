@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # cat 0616netstat.log | grep -v "0.0.0.0:" | awk '{if($7 ~ /\.*java/){print $0}}' | awk '{if($5 !~ /172\.17\.\.*/ && $5 !~ /\.*:3306/){print $0}}:q
-
+targetApp=$1
 podInfos=$(sudo kubectl get pod -o wide | awk '{print $1":"$6}')
 for podInfo in $podInfos; do
     pod=${podInfo%%:*}
@@ -11,8 +11,7 @@ for podInfo in $podInfos; do
     # pod名称必定大于38
     if [ ${#pod} -lt 38 ]; then
         continue
-    fi
-    echo -e "\033[36m${pod}\033[0m"
+    fi  
 
     # 检查是否有dubbo服务
     # 特殊的名称处理
@@ -32,33 +31,51 @@ for podInfo in $podInfos; do
         appCode="yt_datax_server"
     fi
 
+    if [ -n "$targetApp" ] && [ "$targetApp" != "$appCode" ];then
+        continue
+    fi
+
+    echo -e "\033[36m${pod}\033[0m"
+
     sudo kubectl exec -it $pod -- netstat -naopt >temp.log
 
     # 检查开放端口情况
     ports=$(cat temp.log | grep "java" | grep "LISTEN" | awk '{if($4 ~ /0\.0\.0\.0:.*/){print $4}}' | sed 's/0.0.0.0://g' | sort -n | awk '{ for(i=1;i<=NF;i++){ if(NR==1){ arr[i]=$i; }else{ arr[i]=arr[i]"\t"$i; } } } END{ for(i=1;i<=NF;i++){ print arr[i]; } }')
-    echo -e "> 应用占用端口  >> \033[32m${ports}\033[0m"
+    echo -e "\033[32m> 应用占用端口  >> ${ports}\033[0m"
 
     # 检查数据库链接情况
-    for db in $(cat temp.log | grep "java" | awk '{if($5 ~ /.*:3306/){print $5,$6}}' | awk '{ar[$1]=$0}; END{for (i in ar) print ar[i];}' | awk '{print $1"="$2}'); do
+    for db in $(cat temp.log | grep "java" | awk '{if($5 ~ /.*:3306$/){print $5,$6}}' | awk '{ar[$1]=$0}; END{for (i in ar) print ar[i];}' | awk '{print $1"="$2}'); do
         if [ "${db##*=}" = "ESTABLISHED" ]; then
-            echo -e "> 数据库链接    >> ${db%%=*}   \033[32mDB链接正常\033[0m"
+            echo -e "\033[32m> 数据库链接    >> ${db%%=*}   DB链接正常\033[0m"
         elif [ "${db##*=}" = "SYN_SENT" ]; then
-            echo -e "> 数据库链接    >> ${db%%=*}   \033[31mDB网络不通\033[0m"
+            echo -e "\033[31m> 数据库链接    >> ${db%%=*}   DB网络不通\033[0m"
         else
-            echo -e "> 数据库链接    >> ${db%%=*}   \033[31m${db##*=}\033[0m"
+            echo -e "\033[31m> 数据库链接    >> ${db%%=*}   ${db##*=}\033[0m"
         fi
     done
 
     # 检查mq链接情况
-    for db in $(cat temp.log | grep "java" | awk '{if($5 ~ /.*:9876/ || $5 ~ /.*:40911/ || $5 ~ /.*:30909/ || $5 ~ /.*:30911/){print $5,$6}}' | awk '{ar[$1]=$0}; END{for (i in ar) print ar[i];}' | awk '{print $1"="$2}'); do
+    for db in $(cat temp.log | grep "java" | awk '{if($5 ~ /.*:9876$/ || $5 ~ /.*:40911$/ || $5 ~ /.*:30909$/ || $5 ~ /.*:30911$/){print $5,$6}}' | awk '{ar[$1]=$0}; END{for (i in ar) print ar[i];}' | awk '{print $1"="$2}'); do
         if [ "${db##*=}" = "ESTABLISHED" ]; then
-            echo -e "> MQ链接        >> ${db%%=*}   \033[32mMQ链接正常\033[0m"
+            echo -e "\033[32m> MQ链接        >> ${db%%=*}   MQ链接正常\033[0m"
         elif [ "${db##*=}" = "SYN_SENT" ]; then
-            echo -e "> MQ链接        >> ${db%%=*}   \033[31mMQ网络不通\033[0m"
+            echo -e "\033[31m> MQ链接        >> ${db%%=*}   MQ网络不通\033[0m"
         else
-            echo -e "> MQ链接        >> ${db%%=*}   \033[31m${db##*=}\033[0m"
+            echo -e "\033[31m> MQ链接        >> ${db%%=*}   ${db##*=}\033[0m"
         fi
     done
+
+    # 检查kafka链接情况
+    for db in $(cat temp.log | grep "java" | awk '{if($5 ~ /.*:9092$/){print $5,$6}}' | awk '{ar[$1]=$0}; END{for (i in ar) print ar[i];}' | awk '{print $1"="$2}'); do
+        if [ "${db##*=}" = "ESTABLISHED" ]; then
+            echo -e "\033[32m> Kafka链接      >> ${db%%=*}   Kafka链接正常\033[0m"
+        elif [ "${db##*=}" = "SYN_SENT" ]; then
+            echo -e "\033[31m> Kafka链接      >> ${db%%=*}   Kafka网络不通\033[0m"
+        else
+            echo -e "\033[31m> Kafka链接      >> ${db%%=*}   ${db##*=}\033[0m"
+        fi
+    done
+
 
     # 1. 查询dubbo name
     dubboNameJson=$(curl -s "http://es.yangtuojia.com/getDubboAppName?appCmdbName=${appCode}")
@@ -68,9 +85,9 @@ for podInfo in $podInfos; do
         # 3. 查询是否注册到zk
         zkStr=$(curl -s "http://register-ops.yangtuojia.com/providers?cluster=k8s&app=${dubboName}&host=${ip}")
         if [ ${#zkStr} -lt 100 ]; then
-            echo -e "> dubbo服务检查 >> dubboName: $dubboName    ip: $ip   >>>>   \033[33m k8s zk 上没有发现 dubbo \033[0m"
+            echo -e "\033[33m> dubbo服务检查 >> dubboName: $dubboName    ip: $ip   >>>>    k8s zk 上没有发现 dubbo \033[0m"
         else
-            echo -e "> dubbo服务检查 >> dubboName: $dubboName    ip: $ip   >>>>   \033[32m dubbo服务正常 \033[0m"
+            echo -e "\033[32m> dubbo服务检查 >> dubboName: $dubboName    ip: $ip   >>>>    dubbo服务正常 \033[0m"
         fi
     fi
 
@@ -183,9 +200,9 @@ for podInfo in $podInfos; do
         fi
 
         # http访问80端口的，没法限制，过滤掉
-        if [[ "$targetIpPort" =~ .*:80$ ]]; then
-            continue
-        fi
+        # if [[ "$targetIpPort" =~ .*:80$ ]]; then
+        #     continue
+        # fi
 
         if [ "$targetIpPort" = "172.16.22.228:28845" ] || [ "$targetIpPort" = "172.16.22.227:28845" ]; then
             echo "> $appIp    $targetIpPort   >>>>   alita-doc富客户端, zk地址的key: alita.doc.client.dubbo-consumer-app-owner"
