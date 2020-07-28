@@ -1,6 +1,7 @@
 #!/usr/bin/python
 # -*- coding: UTF-8 -*-
-import sys, getopt
+import sys
+import getopt
 
 # 富途
 zqCom = "futu"
