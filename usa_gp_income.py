@@ -83,6 +83,9 @@ def main(argv):
     except getopt.GetoptError:
         print('usa_gp_income.py -p <买入价格> -n <买入数量> -r <上涨几个点>')
         sys.exit(2)
+    if len(opts) == 0:
+        print('usa_gp_income.py -p <买入价格> -n <买入数量> -r <上涨几个点>')
+        sys.exit(2)
     for opt, arg in opts:
         if opt == '-h':
             print('usa_gp_income.py -p <买入价格> -n <买入数量> -r <上涨几个点>')
