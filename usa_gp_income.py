@@ -66,7 +66,7 @@ def tradeInfo(price, num, rate):
 ''' % (price, num, total, round(buyFee, 1))
     print(msg)
     if rate == 0:
-        for n in range(1, 10):
+        for n in range(1, 30):
             print(sellInfo(price, num, total, buyFee, 0.01 * n))
     else:
         print(sellInfo(price, num, total, buyFee, rate))
